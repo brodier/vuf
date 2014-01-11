@@ -1,4 +1,9 @@
+require "thread"
+require "log4r"
+
 require "vuf/version"
+require "vuf/logger"
+require "vuf/working_pool"
 
 module Vuf
   # Your code goes here...

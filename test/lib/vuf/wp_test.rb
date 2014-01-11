@@ -12,7 +12,7 @@ describe Vuf::WorkingPool do
   end
 
   it "must respond_to do" do
-    subject.must_repond_to(:do)
+    subject.must_respond_to(:do)
   end
   
   it "must respond_to finalize" do
@@ -21,8 +21,9 @@ describe Vuf::WorkingPool do
 
   it "must handle without error" do
     subject.run
-    20.times do |i|
-    subject.do { sleep(1) }
+    5.times do |i|
+      subject.do { sleep(1) }
+    end
     subject.finalize
   end
 end
