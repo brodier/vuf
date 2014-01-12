@@ -22,7 +22,7 @@ describe Vuf::WorkingPool do
   it "must handle without error" do
     subject.run
     5.times do |i|
-      subject.do { sleep(1) }
+      subject.do { sleep(1/10) }
     end
     subject.finalize
   end
