@@ -67,11 +67,13 @@ module Vuf
       until ENDING_TASK == (task= @wq.pop)
         channel = task.first
         task = task.last
-        if (channelQ = try_lock_channel(channel,task)).nil?
-          task.call
+        channelQ = nil
+	channelQ = try_lock_channel(channel,task) unless channel.nil?
+        if channelQ.nil?
+	  task.call
         else
           channelQ.pop.call until is_clear(channel)
-	      end
+	end
       end
     end
   end
