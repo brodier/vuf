@@ -1,7 +1,6 @@
 require_relative '../../test_helper'
 
 describe Vuf::Pool do
-  Logger = Vuf::Logger
   subject {  
     class TestKlass
       include Vuf::Pool
@@ -48,9 +47,7 @@ describe Vuf::Pool do
     wp.run
     1000.times do |i|
       wp.do do 
-        Logger.info "WP task #{i}\n"
         poolklass_instance = PoolKlass.instance
-        Logger.info "Write message #{i} in instance(#{poolklass_instance.i_index})\n"
         poolklass_instance.write("Message #{i.to_s}\n")
         PoolKlass.release
       end
