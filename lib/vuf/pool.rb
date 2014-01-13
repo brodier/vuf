@@ -38,20 +38,32 @@ module Vuf
       def __init__(klass) # :nodoc:
         klass.instance_eval {
           @pool__instances__ = Queue.new
+          @used__instances__ = Hash.new
           @pool__mutex__ = Mutex.new
         }
-        def klass.use_instance # :nodoc:
-          available__instance__ = nil
-          @pool__mutex__.synchronize {
-            if @pool__instance__.size > 0
-              available_instance__ = @pool__instances__.pop 
+        
+        def klass.instance # :nodoc:
+          instance__ = nil
+          @pool__mutex__.synchronize do
+            instance__ = @used__instances__[Thread.current]
+            if instance__.nil? && @pool__instances__.size > 0
+              instance__ = @pool__instances__.pop 
             end
-          }
-          available__instance__ ||= new()
-          
-          yield available__instance__ if block_given?
-          @pool__instances__.push(available__instance__)
+            instance__ = new() if instance__.nil?
+            @used__instances__[Thread.current] = instance__
+          end
+          instance__
         end
+
+        def klass.release # :nodoc:
+          instance__ = nil
+          @pool__mutex__.synchronize do
+            instance__ = @used__instances__.delete(Thread.current)
+            @pool__instances__.push(instance__) unless instance__.nil?
+          end
+          !instance__.nil?
+        end
+        
         klass
       end
 
