@@ -87,7 +87,6 @@ module Vuf
               i.finalize if i.respond_to?(:finalize)
             end
           end
-          !instance__.nil?
         end
         
         klass
