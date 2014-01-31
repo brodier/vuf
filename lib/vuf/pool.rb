@@ -63,6 +63,31 @@ module Vuf
           end
           !instance__.nil?
         end
+
+        def klass.count
+          count = 0
+          @pool__mutex__.synchronize do
+            count = @pool__instances__.size + @used__instances__.size
+          end
+          return count
+        end
+
+        def klass.running
+          count = 0
+          @pool__mutex__.synchronize do
+            count = @used__instances__.size
+          end
+          return count
+        end
+        
+        def klass.finalize # :nodoc:
+          @pool__mutex__.synchronize do
+            until @pool__instances__.empty?
+              i = @pool__instances__.pop
+              i.finalize if i.respond_to?(:finalize)
+            end
+          end
+        end
         
         klass
       end

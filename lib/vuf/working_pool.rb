@@ -25,8 +25,8 @@ module Vuf
 	    end
     end
 
-    def do(channel=nil,&task)
-      @wq.push([channel,task])
+    def do(channel=nil, *args, &task)
+      @wq.push([channel,task,args])
     end
 
     def finalize
@@ -37,19 +37,21 @@ module Vuf
       @workers.each do |worker|
         worker.join
       end
+      @workers=nil
     end
     
     private
     
-    def try_lock_channel(channel,task)
+    def try_lock_channel(channel,task, args)
       new_channel_q = nil
       @channels_mutex.synchronize {
         if @channels[channel].nil?
 	        new_channel_q = @channelsQ.shift
+          raise "Missing queue in working pool" unless new_channel_q.instance_of?(Queue)
           @channels[channel]=new_channel_q
 	      end
+        @channels[channel].push([task, args])
       }
-      @channels[channel].push(task)
       return new_channel_q
     end
     
@@ -64,16 +66,20 @@ module Vuf
 
     def works
       task=nil
-      until ENDING_TASK == (task= @wq.pop)
-        channel = task.first
-        task = task.last
+      until ENDING_TASK == (channel, task, args = @wq.pop)
         channelQ = nil
-	channelQ = try_lock_channel(channel,task) unless channel.nil?
-        if channelQ.nil?
-	  task.call
-        else
-          channelQ.pop.call until is_clear(channel)
-	end
+        channelQ = try_lock_channel(channel, task, args) unless channel.nil?
+        unless channelQ.nil?
+          until is_clear(channel)
+            task,args = channelQ.pop
+            begin
+              task.call(*args)
+            rescue => e
+              Logger.error "Worker catch a task exception :\n#{e.message}\n#{e.backtrace.join("\n")}"
+            end
+          end
+          channelQ = nil
+        end
       end
     end
   end

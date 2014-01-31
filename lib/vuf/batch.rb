@@ -2,13 +2,14 @@ module Vuf
   class Batch
     def initialize(size,&batch)
       @mutex = Mutex.new
-      @batchQ = SizedQueue.new(size)
+      @batchQ = []
+      @size = size
       @batch = batch
     end
     
     def push(obj)
-      @batchQ.push(obj)
-      objsToProc = get_objs(@batchQ.max)
+      @mutex.synchronize { @batchQ << obj }
+      objsToProc = get_objs(@size)
       @batch.call(objsToProc) unless objsToProc.nil?
     end
     
@@ -22,9 +23,8 @@ module Vuf
       objToProc = nil
       @mutex.synchronize do
         if size_condition <= @batchQ.size
-          objToProc = []
-          objToProc <<  @batchQ.pop until @batchQ.empty?
-          @batchQ.clear
+          objToProc = @batchQ
+          @batchQ = []
         end
       end     
       return objToProc

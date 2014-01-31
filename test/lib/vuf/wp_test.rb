@@ -26,5 +26,16 @@ describe Vuf::WorkingPool do
     end
     subject.finalize
   end
+  
+  it "must handle do with params and channel without error" do
+    subject.run
+    5.times do |i|
+      subject.do(nil,i) { |var|
+        sleep(var/10) 
+      }
+    end
+    subject.finalize
+  end
+  
 end
 
