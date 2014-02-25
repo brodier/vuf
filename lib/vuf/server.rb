@@ -10,24 +10,7 @@ module Vuf
       @wp = Vuf::WorkingPool.new(4)
       @wp.run
     end
-    
-    def serve(sock)
-      msg_recv = sock.recv_nonblock(1024)
-      if msg_recv.empty?
-        session = @sessions_ctx.delete(sock)
-        session.finalize unless session.nil?
-        @closing_q << sock
-      else
-        session = @sessions_ctx[sock]
-        @wp.do(session,session,msg_recv) do |sess,msg|
-          ret = sess.handle(msg)
-          if ret.nil?
-            Logger.error "Handle return nil on msg #{msg} at step #{sess.step}"
-          end
-        end
-      end
-    end
-    
+
     def start
       if @server_thread.nil?
         @running = true
@@ -35,25 +18,13 @@ module Vuf
           Logger.debug "Server Starting"
           begin
             @server = TCPServer.new @port
-            s_list = [@server]
+            @s_list = [@server]
             while @running
-              until @closing_q.empty?
-                s = @closing_q.pop
-                s.close
-                s_list.delete(s) 
-              end
-              rsl, = IO.select(s_list,[],[],1)
-              unless rsl.nil? # Timeout
-                rsl.each do |s|
-                  if s == @server
-                    sock = s.accept
-                    s_list << sock
-                    @sessions_ctx[sock] = @session_klass.new(sock)
-                  else
-                    serve s
-                  end
-                end
-              end
+              close_ended_sessions
+              rsl, = IO.select(@s_list,[],[],1)
+              next if rsl.nil? # Timeout
+              accept(rsl) # Handle acceptance of new incoming session
+              rsl.each { |s| serve s }
             end
           rescue => e
             Logger.error "Server Error [#{e}]
@@ -68,6 +39,46 @@ module Vuf
       @running = false
       @server_thread.join unless @server_thread.nil?
       @server_thread = nil
+    end    
+    
+    private
+    
+    def accept(selected)
+      serv = selected.delete(@server)
+      if serv
+        sock = serv.accept
+        @s_list << sock
+        @sessions_ctx[sock] = @session_klass.new(sock)
+      end
+    end
+    
+    def serve(sock)
+      msg_recv = sock.recv_nonblock(1024)
+      if msg_recv.empty?
+        @closing_q << sock
+      else
+        session = @sessions_ctx[sock]
+        @wp.do(session,session,msg_recv) do |sess,msg|
+          ret = sess.handle(msg)
+          if ret.nil?
+            Logger.error "Handle return nil on msg #{msg} at step #{sess.step}"
+          end
+        end
+      end
+    end
+    
+    def close_ended_sessions
+      until @closing_q.empty?
+        s = @closing_q.pop
+        session = @sessions_ctx.delete(s)
+         if session
+           @wp.do(session,session,s) do |sess,sock|
+             sess.finalize                
+             sock.close
+           end
+         end
+        @s_list.delete(s) 
+      end    
     end
   end
 end

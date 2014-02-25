@@ -22,19 +22,21 @@ class TestSession
         Vuf::Logger.error "Error received #{msg} on step #{@step}"
         return nil
       end      
-      
       @step += 1
-      reply = nil
-      if curr_step
-        reply = STEPS[ curr_step + 1]
-      end
+      reply = STEPS[@step]
       return nil if reply.nil?
+      no_reply = true
       begin
         @sock.send reply,0    
+        no_reply = false
       rescue => e
         Vuf::Logger.error "Error on send #{reply} for  #{@sock} => [#{e}]
             #{e.message}
             #{e.backtrace.join("\n")}"        
+      ensure 
+        if no_reply
+          Vuf::Logger.error "No reply send on session #{@sock} for msg #{msg} / reply #{reply} on step #{@step}"
+        end
       end
       @step += 1
       return @step
@@ -49,13 +51,17 @@ end
 
 
 class TestClient
+  def initialize(nb_req)
+    @nb_req = nb_req
+  end
+  
   def run
     sockets = []
     sessions = {}
     done = 0 ; done_mutex = Mutex.new
     nb_run=0
-    until done == 500
-      while sockets.size < 20 && nb_run < 500
+    until done == @nb_req
+      while sockets.size < 20 && nb_run < @nb_req
         nb_run += 1
         s =  TCPSocket.open('localhost',3527)
         sockets << s
@@ -88,7 +94,7 @@ describe Vuf::Server do
   it "must parse options without errors" do
     # Run the server with logging enabled (it's a separate thread).
     subject.start
-    TestClient.new.run
+    TestClient.new(100).run
     subject.shutdown
   end
 end
