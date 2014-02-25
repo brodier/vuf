@@ -44,14 +44,19 @@ module Vuf
     
     def try_lock_channel(channel,task, args)
       new_channel_q = nil
+      error = nil
       @channels_mutex.synchronize {
         if @channels[channel].nil?
 	        new_channel_q = @channelsQ.shift
-          raise "Missing queue in working pool" unless new_channel_q.instance_of?(Queue)
           @channels[channel]=new_channel_q
 	      end
-        @channels[channel].push([task, args])
+        if @channels[channel].instance_of?(Queue)        
+          @channels[channel].push([task, args])
+        else
+          error = "Missing queue in working pool" 
+        end
       }
+      raise error unless error.nil?
       return new_channel_q
     end
     

@@ -17,27 +17,33 @@ module Vuf
         @stats[:counter][label] += 1
       }
     end
-    def start(label)
-      @mutex.synchronize { @timers[[Thread.current,label]] = Time.new }
+    def start(label,limit=nil)
+      @mutex.synchronize { @timers[[Thread.current,label]] = [Time.new,limit] }
     end
     
     def stop(label)
+      Logger.error "Invalid label #{label}" unless label.instance_of?(String) || label.instance_of?(Symbol)
       new_time = Time.new
       @mutex.synchronize { 
-        time = @timers.delete([Thread.current,label])
+        time,limit = @timers.delete([Thread.current,label])
         if time
           @stats[:time][label] ||= []
-          @stats[:time][label] << new_time - time
+          t = new_time - time
+          if limit && t > limit
+            Logger.warn "Time limit exceeds for #{label} : #{t} s"
+          end
+          @stats[:time][label] << t
         end
       }
     end
     
     def result
-      counter_stat = [] ; time_stat = []
+      counter_stat = [] ; time_stat = [] ; current_time = Time.new
       error = nil
       @mutex.synchronize {
         begin 
-          @stats[:counter].each{|k,v| counter_stat << "#{k} => #{v.to_s.rjust(10,' ')}" }
+          @stats[:counter].each{|k,v| counter_stat << [k, "#{k} => #{v.to_s.rjust(10,' ')}"] }
+          counter_stat = counter_stat.sort{|a,b| a.first <=> b.first}.collect{|a| a.last}
           @stats[:time].each{ |k,v|
             # retrieve previous av_time and number of mesures (nbdata)
             av_time,nbdata = @stats[:avtime][k]
@@ -52,10 +58,17 @@ module Vuf
             end
             av_time = cumul_time / nbdata
             time_stat << "#{k.to_s.rjust(20,' ')} => #{av_time.round(8).to_s.rjust(12,' ')} s/op " + 
-            "[#{nbdata.to_s.rjust(12,' ')} op| #{(nbdata*av_time).round(2).to_s.rjust(8,' ')} s]"
+              "[#{nbdata.to_s.rjust(12,' ')} op| #{(nbdata*av_time).round(2).to_s.rjust(8,' ')} s]"
             @stats[:avtime][k] = [av_time,nbdata]
             @stats[:time][k] = nil
-          }      
+          }
+          @timers.each{|k,v|
+            t = current_time - v.first
+            if v.last && ( t > v.last)
+              time_stat << "Timeout on #{k.last} : #{t} s"
+            end
+          }
+          # time_stat = time_stat.sort{|a,b| a.first <=> b.first}.collect{|a| a.last}          
         rescue => e
           Logger.error {"Error in statistic #{e.message}\n#{e.backtrace.join("\n")}"}
           error = e

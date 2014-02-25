@@ -1,3 +1,4 @@
+require "socket"
 require "thread"
 require "log4r"
 
