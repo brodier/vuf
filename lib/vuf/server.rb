@@ -20,7 +20,10 @@ module Vuf
       else
         session = @sessions_ctx[sock]
         @wp.do(session,session,msg_recv) do |sess,msg|
-          sess.handle(msg)
+          ret = sess.handle(msg)
+          if ret.nil?
+            Logger.error "Handle return nil on msg #{msg} at step #{sess.step}"
+          end
         end
       end
     end
@@ -29,7 +32,7 @@ module Vuf
       if @server_thread.nil?
         @running = true
         @server_thread = Thread.new do
-          puts "Server Starting"
+          Logger.debug "Server Starting"
           begin
             @server = TCPServer.new @port
             s_list = [@server]
@@ -53,7 +56,7 @@ module Vuf
               end
             end
           rescue => e
-            puts "Server Error [#{e}]
+            Logger.error "Server Error [#{e}]
               #{e.message}
               #{e.backtrace.join("\n")}"
           end

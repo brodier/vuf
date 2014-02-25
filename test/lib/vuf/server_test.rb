@@ -1,27 +1,34 @@
 require_relative '../../test_helper'
+
+STEPS = ["IPDU_CN", "IPDU_AC", "MSG_804", "MSG_814", "MSG_306", "MSG_316", 
+  "MSG_246",  "MSG_256", "MSG_506",  "MSG_516", nil]
+
  
 class TestSession
-  REPLIES = {
-    "IPDU_CN" => "IPDU_AC",
-    "MSG_804" => "MSG_814",
-    "MSG_306" => "MSG_316",
-    "MSG_246" => "MSG_256",
-    "MSG_506" => "MSG_516"
-  }
+  attr_reader :step
   def initialize(socket)
     @sock = socket
     @step = 0
   end
   
+  def start
+    @sock.send STEPS.first, 0
+    @step += 1
+  end
+  
   def handle(msg)
-      if @step != REPLIES.keys.index(msg)
+      curr_step = STEPS.index(msg)
+      if @step != curr_step
         Vuf::Logger.error "Error received #{msg} on step #{@step}"
-      end
+        return nil
+      end      
       
       @step += 1
-      
-      reply = REPLIES[msg]
-      reply ||= "Error"
+      reply = nil
+      if curr_step
+        reply = STEPS[ curr_step + 1]
+      end
+      return nil if reply.nil?
       begin
         @sock.send reply,0    
       rescue => e
@@ -29,10 +36,12 @@ class TestSession
             #{e.message}
             #{e.backtrace.join("\n")}"        
       end
+      @step += 1
+      return @step
   end
   
   def finalize
-    if @step != 5
+    if @step != (STEPS.size - 1)
       Vuf::Logger.error "Error finalize on step #{@step}"
     end
   end
@@ -42,22 +51,16 @@ end
 class TestClient
   def run
     sockets = []
+    sessions = {}
     done = 0 ; done_mutex = Mutex.new
-    FIRST_MSG = "IPDU_CN"
-    REPLIES = {
-      "IPDU_AC" => "MSG_804",
-      "MSG_814" => "MSG_306",
-      "MSG_316" => "MSG_246",
-      "MSG_256" => "MSG_506",
-      "MSG_516" => nil
-    }
     nb_run=0
-    until done == 1000
-      while sockets.size < 20 && nb_run < 1000
+    until done == 500
+      while sockets.size < 20 && nb_run < 500
         nb_run += 1
         s =  TCPSocket.open('localhost',3527)
-        s.send FIRST_MSG, 0
         sockets << s
+        sessions[s] = TestSession.new(s)
+        sessions[s].start
       end
       
       rsl, = IO.select(sockets,[],[],1)
@@ -65,17 +68,13 @@ class TestClient
       unless rsl.nil?
         rsl.each do |s|
           reply = s.recv(1024)
-          req = REPLIES[reply]
-          if reply == "MSG_516"
+          sess = sessions[s]
+          ret = sess.handle(reply)
+          if ret.nil?
             s.close
             done_mutex.synchronize { done += 1}
             sockets.delete(s)
-            Vuf::Logger.info "#{done}"
-          elsif req.nil?
-            Vuf::Logger.error "Error unknown reply #{reply}"
-            sleep 0.2
-          else
-            s.send req, 0
+            sessions.delete(s)
           end
         end
       end
@@ -90,6 +89,6 @@ describe Vuf::Server do
     # Run the server with logging enabled (it's a separate thread).
     subject.start
     TestClient.new.run
-    server.shutdown
+    subject.shutdown
   end
 end
